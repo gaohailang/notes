@@ -1,0 +1,199 @@
+
+
+```js
+
+app.factory('pmtPopup', ["$document", "$compile", "$rootScope", "$controller", "$timeout",
+    function($document, $compile, $rootScope, $controller, $timeout) {
+        var defaults = {
+            id: null,
+            template: null,
+            templateUrl: null,
+            title: '',
+            backdrop: true,
+            success: {
+                label: '确定',
+                fn: null
+            },
+            cancel: {
+                label: '取消',
+                fn: null
+            },
+            controller: null, //just like route controller declaration
+            backdropClass: "modal-backdrop",
+            backdropCancel: true,
+            footerTemplate: null,
+            modalClass: "modal",
+            css: {
+                top: '100px',
+                left: '30%',
+                margin: '0 auto'
+            }
+        };
+        var body = $document.find('body');
+
+        return function Popup(templateUrl /*optional*/ , options, passedInLocals) {
+
+            // Handle arguments if optional template isn't provided.
+            if (angular.isObject(templateUrl)) {
+                passedInLocals = options;
+                options = templateUrl;
+            } else {
+                options.templateUrl = templateUrl;
+            }
+
+            options = angular.extend({}, defaults, options); //options defined in constructor
+
+            var key;
+            var idAttr = options.id ? ' id="' + options.id + '" ' : '';
+
+            var defaultFooter = '<button class="w-btn w-btn-grand w-btn-primary" ng-click="$modalSuccess()">{{$modalSuccessLabel}}</button>' +
+                '<button class="w-btn w-btn-grand" ng-click="$modalCancel()">{{$modalCancelLabel}}</button>';
+
+            var footerTemplate = '<div class="popup-footer">' +
+                (options.footerTemplate || defaultFooter) +
+                '</div>';
+
+            var modalBody = (function() {
+                if (options.template) {
+                    if (angular.isString(options.template)) {
+                        // Simple string template
+                        return options.template;
+                    } else {
+                        // jQuery/JQlite wrapped object
+                        return options.template.html();
+                    }
+                } else {
+                    // Template url
+                    return '<div ng-include="\'' + options.templateUrl + '\'"></div>';
+                }
+            })();
+            //We don't have the scope we're gonna use yet, so just get a compile function for modal
+            var modalEl = angular.element(
+                '<div class="' + options.modalClass + ' pmt-popup"' + idAttr + '>' +
+                '  <div class="popup-container">' +
+                '    <p class="popup-title">{{$title}}</p>' +
+                '    <button type="button" class="close" ng-click="$modalCancel()">&times;</button>' +
+                '    <div class="popup-content">' + modalBody +
+                '    </div>' + footerTemplate +
+                '  </div>' +
+                '</div>');
+
+            for (key in options.css) {
+                modalEl.css(key, options.css[key]);
+            }
+            // var divHTML = "<div ";
+            // if (options.backdropCancel) {
+            //     divHTML += 'ng-click="$modalCancel()"';
+            // }
+            // divHTML += ">";
+            // var backdropEl = angular.element(divHTML);
+            // backdropEl.addClass(options.backdropClass);
+            // backdropEl.addClass('fade in');
+
+
+            // close fn related
+            var handleEscPressed = function(event) {
+                if (event.keyCode === 27) {
+                    scope.$modalCancel();
+                }
+            };
+            var closeFn = function() {
+                body.unbind('keydown', handleEscPressed);
+                modalEl.remove();
+                // if (options.backdrop) {
+                //     backdropEl.remove();
+                // }
+            };
+            body.bind('keydown', handleEscPressed);
+
+            var ctrl, locals,
+                scope = options.scope || $rootScope.$new();
+
+            scope.$title = options.title;
+            scope.$modalClose = closeFn;
+            scope.$modalCancel = function() {
+                var callFn = options.cancel.fn || closeFn;
+                callFn.call(this);
+                scope.$modalClose();
+            };
+            scope.$modalSuccess = function() {
+                var callFn = options.success.fn || closeFn;
+                callFn.call(this);
+                scope.$modalClose();
+            };
+            scope.$modalSuccessLabel = options.success.label;
+            scope.$modalCancelLabel = options.cancel.label;
+
+            if (options.controller) {
+                locals = angular.extend({
+                    $scope: scope
+                }, passedInLocals);
+                ctrl = $controller(options.controller, locals);
+                // Yes, ngControllerController is not a typo
+                modalEl.contents().data('$ngControllerController', ctrl);
+            }
+
+            $compile(modalEl)(scope);
+            // $compile(backdropEl)(scope);
+            body.append(modalEl);
+            // if (options.backdrop) body.append(backdropEl);
+
+            $timeout(function() {
+                modalEl.addClass('in');
+            }, 200);
+        };
+    }
+]);
+
+app.factory('pmtPopup', ["$document", "$compile", "$rootScope", "$timeout", '$templateCache',
+    function($document, $compile, $rootScope, $timeout, $templateCache) {
+        var tpl =
+            ['<div class="pmt-popup" ng-show="isShowGlobalPopup">',
+            '<div class="popup-container">',
+            '<p class="popup-title"></p>',
+            '<div class="popup-content">',
+            '<div class="popup-ctrl">',
+            '<button ng-click="cancelBtnHandler()" class="w-btn w-btn-grand">{{succBtnText}}</button>',
+            '<button ng-click="okBtnHandler()" class="w-btn w-btn-primary">{{succBtnText}}</button>',
+            '</div></div></div></div>'
+        ].join('');
+
+        return function(title, content, options) {
+            var scope,
+                $body = $('body'),
+                content;
+            if (options && options.scope) {
+                scope = options.scope;
+            } else {
+                scope = $rootScope.$new()
+            }
+
+            if (content.indexOf('html')) {
+                content = $templateCache.get(content);
+            }
+            var $popup = angular.element(tpl);
+            $popup
+                .find('.popup-title').html(title).end()
+                .find('.popup-content').html(content);
+
+            var handleEscPressed = function(event) {
+                if (event.keyCode === 27) {
+                    closeFn();
+                }
+            };
+            // close related
+            var closeFn = function() {
+                $body.unbind('keydown', handleEscPressed);
+                $popup.remove();
+            };
+            scope.cancelBtnHandler = closeFn;
+            $body.bind('keydown', handleEscPressed);
+
+            // setup to show
+            scope.isShowGlobalPopup = true;
+            $compile($popup)(scope);
+            $body.append($popup);
+        };
+    }
+]);
+```
